@@ -4,7 +4,7 @@ from indicnlp import common
 from indicnlp.tokenize import sentence_tokenize
 from nltk.tokenize import sent_tokenize
 from underthesea import sent_tokenize as vi_sent_tokenize
-
+import os
 
 def build_nltk_splitter(lang):
     lang_to_punkt = {
@@ -31,7 +31,7 @@ def build_stanza_splitter(lang, batch_size=32):
     lang_to_stanza = {"zht": "zh-hant", "zhs": "zh-hans"}
     lang = lang_to_stanza.get(lang, lang)
     # TODO: @thomasw21 CUDA doesn't work well with multiprocessing
-    tokenizer = stanza.Pipeline(lang, logging_level="WARNING", processors='tokenize',
+    tokenizer = stanza.Pipeline(lang,dir=os.getenv('STANZA_RES'), logging_level="WARNING", processors='tokenize',
                           use_gpu=False)
     
     def splitter(examples):

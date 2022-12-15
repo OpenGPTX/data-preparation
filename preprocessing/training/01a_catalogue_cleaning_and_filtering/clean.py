@@ -278,7 +278,7 @@ def main():
     # Load dataset
     logger.info(f" ===== Loading {args.dataset_path} =====")
     if args.load_arrow_file:
-        ds = load_from_disk(args.dataset_path)
+        ds = load_from_disk(args.dataset_path)['train']
     else:
         ds = load_dataset(args.dataset_path, split="train", use_auth_token=True, ignore_verifications=True)
 

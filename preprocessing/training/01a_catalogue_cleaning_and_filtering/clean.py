@@ -3,14 +3,14 @@ import json
 import logging
 import random
 from functools import partial
-
+import os
 import torch
 from datasets import Dataset, load_dataset, load_from_disk, concatenate_datasets, set_caching_enabled
 from pathlib import Path
 from typing import Tuple, Optional, Callable, List, Dict
 from datasets.utils.logging import set_verbosity_info
 from numpy.random import default_rng
-
+from multiprocessing import Process 
 from clean_helpers import build_small_docs_filter, filter_wiki_non_text_type, filter_wiki_user_titles, \
     replace_newline_with_space, build_dedup_template, build_line_with_substring_remover, \
     en_wiktionary_stripper, build_small_docs_bytes_filter, build_dedup_document, filter_remove_empty_docs,\
@@ -266,21 +266,31 @@ def apply_function(function_name: str, ds: Dataset, args) -> Tuple[Dataset, Opti
                                   f"Dedup functions: {DEDUPS_KEYS}\n"
                                   )
 
-def main():
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-    args = get_args()
-    logger.info(f"** The job is runned with the following arguments: **\n{args}\n **** ")
+
+def list_folders(directory):
+    # Get a list of all the files in the directory
+    all_files = os.listdir(directory)
+    # Initialize an empty list to store the folders
+    folders = []
+    # Iterate through the files in the directory
+    for file in all_files:
+        # Check if the file is a directory
+        if os.path.isdir(os.path.join(directory, file)):
+            # If it is, append it to the list of folders
+            folders.append(file)
+    # Return the list of folders
+    return folders
+
+
+def clean(args, input_dir):
 
     # Load dataset
-    logger.info(f" ===== Loading {args.dataset_path} =====")
+    logger.info(f" ===== Loading {input_dir} =====")
     if args.load_arrow_file:
-        ds = load_from_disk(args.dataset_path)['train']
+        #removed ['train']
+        ds = load_from_disk(input_dir)
     else:
-        ds = load_dataset(args.dataset_path, split="train", use_auth_token=True, ignore_verifications=True)
+        ds = load_dataset(input_dir, split="train", use_auth_token=True, ignore_verifications=True)
 
     # Apply series of maps and filters
     logger.info(f" ===== Applying transformations =====")
@@ -297,10 +307,11 @@ def main():
 
 
     # Save to disk
-    if args.from_scratch or not args.save_path.exists():
+    output_dir = Path(input_dir)
+    if args.from_scratch or not output_dir.exists():
         logger.info(f" ===== Saving dataset =====")
-        logger.info(f"Saving to final dataset at {args.save_path}.")
-        tmp_save_path = Path(args.save_path.parent, f"tmp-{args.save_path.name}")
+        logger.info(f"Saving to final dataset at {output_dir}.")
+        tmp_save_path = Path(output_dir.parent, f"tmp-{output_dir.name}")
         if len(ds) == 0:
             logger.info("Dataset was empty. Not saving anything.")
             return
@@ -311,10 +322,25 @@ def main():
             )
         else:
             ds.save_to_disk(tmp_save_path)
-        tmp_save_path.rename(args.save_path)
+        tmp_save_path.rename(output_dir)
     else:
-        logging.info(f"Dataset was already saved at {args.save_path}")
+        logging.info(f"Dataset was already saved at {output_dir}")
 
+
+
+def main():
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+    args = get_args()
+    logger.info(f"** The job is runned with the following arguments: **\n{args}\n **** ")
+
+    chunks_dir = list_folders(args.dataset_path)
+    for each_dir in chunks_dir:
+            Process(target=clean, args=(args,os.path.join(args.dataset_path,each_dir),)).start()
 
 if __name__ == "__main__":
     main()
+

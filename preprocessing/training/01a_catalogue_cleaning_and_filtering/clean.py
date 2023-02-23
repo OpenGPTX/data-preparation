@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Tuple, Optional, Callable, List, Dict
 from datasets.utils.logging import set_verbosity_info
 from numpy.random import default_rng
-from multiprocessing import Process 
+from multiprocessing import Pool, set_start_method
+from itertools import repeat 
 from clean_helpers import build_small_docs_filter, filter_wiki_non_text_type, filter_wiki_user_titles, \
     replace_newline_with_space, build_dedup_template, build_line_with_substring_remover, \
     en_wiktionary_stripper, build_small_docs_bytes_filter, build_dedup_document, filter_remove_empty_docs,\
@@ -288,7 +289,7 @@ def clean(args, input_dir):
     logger.info(f" ===== Loading {input_dir} =====")
     if args.load_arrow_file:
         #removed ['train']
-        ds = load_from_disk(input_dir)
+        ds = load_from_disk(input_dir)['train']
     else:
         ds = load_dataset(input_dir, split="train", use_auth_token=True, ignore_verifications=True)
 
@@ -300,14 +301,15 @@ def clean(args, input_dir):
             saving_path = args.checks_save_path / f"{idx}_{preprocessing}_checks"
             if not args.from_scratch and saving_path.exists():
                 continue
-            tmp_save_path = Path(saving_path.parent, f"tmp-{saving_path.name}")
+            tmp_save_path = Path(saving_path.parent, f"tmp-{saving_path.name}",os.path.basename(input_dir))
             logger.info(f" ===== Saving examples to check after {preprocessing}  =====")
             ds_diff.save_to_disk(tmp_save_path)
             tmp_save_path.rename(saving_path)
 
 
     # Save to disk
-    output_dir = Path(input_dir)
+    #output_dir = Path(input_dir)
+    output_dir = Path(os.path.join(args.save_path,os.path.basename(input_dir)))
     if args.from_scratch or not output_dir.exists():
         logger.info(f" ===== Saving dataset =====")
         logger.info(f"Saving to final dataset at {output_dir}.")
@@ -329,6 +331,7 @@ def clean(args, input_dir):
 
 
 def main():
+    set_start_method('spawn')
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -337,9 +340,11 @@ def main():
     args = get_args()
     logger.info(f"** The job is runned with the following arguments: **\n{args}\n **** ")
 
-    chunks_dir = list_folders(args.dataset_path)
-    for each_dir in chunks_dir:
-            Process(target=clean, args=(args,os.path.join(args.dataset_path,each_dir),)).start()
+    #chunks_dir = list_folders(args.dataset_path) -> one line alternative
+    dir_list = [os.path.join(args.dataset_path,x) for x in os.listdir(args.dataset_path) if os.path.isdir(os.path.join(args.dataset_path,x))]  
+    
+    with Pool(args.num_proc) as p:
+        p.starmap(clean, zip(repeat(args),dir_list))
 
 if __name__ == "__main__":
     main()
